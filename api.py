@@ -49,7 +49,12 @@ async def blur_image_from_url(image_url: str, blur_radius: int = 10) -> Optional
         return None
 
 
-async def process_image(file_url: str, width: int = 512, height: int = 512) -> Tuple[bool, Optional[str]]:
+async def process_image(
+    file_url: str,
+    width: int = 512,
+    height: int = 512,
+    prompt: Optional[str] = None
+) -> Tuple[bool, Optional[str]]:
     """
     Process image through UndressWith.AI API
     
@@ -73,7 +78,7 @@ async def process_image(file_url: str, width: int = 512, height: int = 512) -> T
     
     params = {
         "file_url": file_url,
-        "prompt": UNDRESS_PROMPT,
+        "prompt": prompt or UNDRESS_PROMPT,
         "num_images": UNDRESS_NUM_IMAGES,
         "ai_model_type": UNDRESS_AI_MODEL,
         "width": width,

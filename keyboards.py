@@ -166,14 +166,40 @@ def get_referral_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
 def get_buy_credits_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     """Buy credits keyboard after processing"""
     builder = InlineKeyboardBuilder()
-    
+
     builder.row(
         InlineKeyboardButton(
             text=get_text("btn_buy", lang),
             callback_data="open_shop"
         )
     )
-    
+
+    return builder.as_markup()
+
+
+def get_scenario_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Keyboard with post-processing scenarios"""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text=get_text("btn_scenario_finish", lang),
+            callback_data="scenario:finish"
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=get_text("btn_scenario_threesome", lang),
+            callback_data="scenario:threesome"
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=get_text("btn_scenario_lingerie", lang),
+            callback_data="scenario:lingerie"
+        )
+    )
+
     return builder.as_markup()
 
 
