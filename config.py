@@ -89,6 +89,14 @@ UNDRESS_API_URL = "https://api.undresswith.ai/undress_api/undress"
 UNDRESS_CHECK_URL = "https://api.undresswith.ai/undress_api/check_item"
 
 UNDRESS_PROMPT = "Nude"
-UNDRESS_AI_MODEL = 2 
+UNDRESS_AI_MODEL = 2
 UNDRESS_NUM_IMAGES = 1
+
+# ===================== SCENARIO PROMPTS =====================
+
+SCENARIO_PROMPTS = {
+    "finish": "Кончим",
+    "threesome": "Тройничок (не сексуальный контент)",
+    "lingerie": "Примерим сексуальное белье? Без интима"
+}
 

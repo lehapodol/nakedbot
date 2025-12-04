@@ -13,11 +13,12 @@ from keyboards import (
     get_exchange_keyboard, get_withdraw_menu_keyboard,
     get_withdraw_methods_keyboard, get_withdraw_back_keyboard,
     get_admin_withdraw_keyboard, get_buy_credits_keyboard,
-    get_subscription_keyboard
+    get_subscription_keyboard, get_scenario_keyboard
 )
 from config import (
     WELCOME_IMAGE, BOT_USERNAME, CREDIT_PRICE_RUB,
-    USDT_FIXED_FEE, USDT_MIN_AMOUNT, ADMIN_CHAT_ID, CHANNEL_ID
+    USDT_FIXED_FEE, USDT_MIN_AMOUNT, ADMIN_CHAT_ID, CHANNEL_ID,
+    UNDRESS_PROMPT, SCENARIO_PROMPTS
 )
 from api import process_image, upload_to_telegraph, blur_image_from_url
 
@@ -778,6 +779,13 @@ async def process_photo(message: Message, state: FSMContext, bot: Bot):
     )
 
     if success:
+        await state.update_data(
+            last_photo={
+                "file_url": file_url,
+                "width": photo.width,
+                "height": photo.height
+            }
+        )
         # Deduct credits (premium first, then free)
         if has_premium:
             await db.remove_credits(user_id, 1, "premium")
@@ -816,6 +824,7 @@ async def process_photo(message: Message, state: FSMContext, bot: Bot):
                     text=get_text("processing_error", lang),
                     parse_mode=ParseMode.HTML
                 )
+                return
         else:
             # Send normal result (premium credit)
             await message.answer_photo(
@@ -829,9 +838,128 @@ async def process_photo(message: Message, state: FSMContext, bot: Bot):
                 parse_mode=ParseMode.HTML,
                 reply_markup=get_buy_credits_keyboard(lang)
             )
+        await message.answer(
+            text=get_text("processing_scenarios", lang),
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_scenario_keyboard(lang)
+        )
     else:
         # Processing failed
         await processing_msg.edit_text(
             text=get_text("processing_error", lang),
             parse_mode=ParseMode.HTML
         )
+
+
+# ===================== SCENARIO CALLBACKS =====================
+
+@router.callback_query(F.data.startswith("scenario:"))
+async def callback_scenario(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    """Handle additional scenario processing requests"""
+    user_id = callback.from_user.id
+
+    user = await db.get_user(user_id)
+    lang = user["lang"] if user else "ru"
+
+    data = await state.get_data()
+    last_photo = data.get("last_photo") if data else None
+
+    if not last_photo:
+        await callback.answer(
+            text=get_text("scenario_no_photo", lang),
+            show_alert=True
+        )
+        return
+
+    has_premium = user["premium_credits"] > 0 if user else False
+    has_free = user["free_credits"] > 0 if user else False
+
+    if not has_premium and not has_free:
+        await callback.message.answer(
+            text=get_text("no_credits", lang),
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_buy_credits_keyboard(lang)
+        )
+        await callback.answer()
+        return
+
+    scenario_key = callback.data.split(":", maxsplit=1)[1]
+    scenario_prompt = SCENARIO_PROMPTS.get(scenario_key)
+
+    if not scenario_prompt:
+        await callback.answer("Неизвестный сценарий", show_alert=True)
+        return
+
+    use_blur = not has_premium and has_free
+
+    processing_msg = await callback.message.answer(
+        text=get_text("processing_photo", lang),
+        parse_mode=ParseMode.HTML
+    )
+
+    success, result = await process_image(
+        file_url=last_photo.get("file_url"),
+        width=last_photo.get("width", 512),
+        height=last_photo.get("height", 512),
+        prompt=scenario_prompt
+    )
+
+    if success:
+        if has_premium:
+            await db.remove_credits(user_id, 1, "premium")
+        else:
+            await db.remove_credits(user_id, 1, "free")
+
+        try:
+            await processing_msg.delete()
+        except Exception:
+            pass
+
+        if use_blur:
+            blurred_image = await blur_image_from_url(result)
+
+            if blurred_image:
+                await callback.message.answer_photo(
+                    photo=BufferedInputFile(
+                        blurred_image.read(),
+                        filename="result.jpg"
+                    ),
+                    parse_mode=ParseMode.HTML
+                )
+
+                await callback.message.answer(
+                    text=get_text("processing_success_blurred", lang),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=get_buy_credits_keyboard(lang)
+                )
+            else:
+                await callback.message.answer(
+                    text=get_text("processing_error", lang),
+                    parse_mode=ParseMode.HTML
+                )
+                await callback.answer()
+                return
+        else:
+            await callback.message.answer_photo(
+                photo=result,
+                parse_mode=ParseMode.HTML
+            )
+
+            await callback.message.answer(
+                text=get_text("processing_success", lang),
+                parse_mode=ParseMode.HTML,
+                reply_markup=get_buy_credits_keyboard(lang)
+            )
+
+        await callback.message.answer(
+            text=get_text("processing_scenarios", lang),
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_scenario_keyboard(lang)
+        )
+    else:
+        await processing_msg.edit_text(
+            text=get_text("processing_error", lang),
+            parse_mode=ParseMode.HTML
+        )
+
+    await callback.answer()
