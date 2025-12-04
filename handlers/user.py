@@ -902,6 +902,7 @@ async def callback_scenario(callback: CallbackQuery, state: FSMContext, bot: Bot
         width=last_photo.get("width", 512),
         height=last_photo.get("height", 512),
         prompt=scenario_prompt
+        prompt=f"{UNDRESS_PROMPT}. {scenario_prompt}"
     )
 
     if success:
