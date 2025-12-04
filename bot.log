@@ -1,0 +1,7 @@
+nohup: ignoring input
+Traceback (most recent call last):
+  File "/root/deepfakev1/main.py", line 9, in <module>
+    from database import init_db
+  File "/root/deepfakev1/database.py", line 1, in <module>
+    import aiosqlite
+ModuleNotFoundError: No module named 'aiosqlite'
