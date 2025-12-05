@@ -80,6 +80,7 @@ DATABASE_PATH = "bot_database.db"
 # ===================== MEDIA PATHS =====================
 
 WELCOME_IMAGE = "media/welcome.jpg"
+PHOTO_INSTRUCTION_IMAGE = "media/buy.jpg"
 
 # ===================== UNDRESS API CONFIGURATION =====================
 
