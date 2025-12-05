@@ -721,11 +721,10 @@ async def callback_open_shop(callback: CallbackQuery):
 @router.message(F.photo)
 async def process_photo(message: Message, state: FSMContext, bot: Bot):
     """Handle photo messages - process through AI API"""
-    # Check if user is in any state
+    # If user is in another flow, reset it so the photo is processed
     current_state = await state.get_state()
     if current_state is not None:
-        # User is in another flow, don't process photo
-        return
+        await state.clear()
 
     user_id = message.from_user.id
     user = await db.get_user(user_id)
