@@ -16,7 +16,7 @@ from keyboards import (
     get_subscription_keyboard, get_scenario_keyboard
 )
 from config import (
-    WELCOME_IMAGE, BOT_USERNAME, CREDIT_PRICE_RUB,
+    WELCOME_IMAGE, PHOTO_INSTRUCTION_IMAGE, BOT_USERNAME, CREDIT_PRICE_RUB,
     USDT_FIXED_FEE, USDT_MIN_AMOUNT, ADMIN_CHAT_ID, CHANNEL_ID,
     UNDRESS_PROMPT, SCENARIO_PROMPTS
 )
@@ -191,7 +191,7 @@ async def btn_send_photo(message: Message):
 
     # Пытаемся отправить картинку с caption = photo_instruction
     try:
-        photo = FSInputFile("/root/deepfakev1/media/buy.jpg")
+        photo = FSInputFile(PHOTO_INSTRUCTION_IMAGE)
         await message.answer_photo(
             photo=photo,
             caption=get_text("photo_instruction", lang),
