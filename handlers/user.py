@@ -16,7 +16,7 @@ from keyboards import (
     get_subscription_keyboard, get_scenario_keyboard
 )
 from config import (
-    WELCOME_IMAGE, BOT_USERNAME, CREDIT_PRICE_RUB,
+    WELCOME_IMAGE, PHOTO_INSTRUCTION_IMAGE, BOT_USERNAME, CREDIT_PRICE_RUB,
     USDT_FIXED_FEE, USDT_MIN_AMOUNT, ADMIN_CHAT_ID, CHANNEL_ID,
     UNDRESS_PROMPT, SCENARIO_PROMPTS
 )
@@ -26,6 +26,26 @@ router = Router()
 
 
 # ===================== SUBSCRIPTION CHECK =====================
+
+async def send_welcome_menu(bot: Bot, chat_id: int, lang: str):
+    """Send the main menu (welcome) message with image fallback."""
+    try:
+        photo = FSInputFile(WELCOME_IMAGE)
+        await bot.send_photo(
+            chat_id=chat_id,
+            photo=photo,
+            caption=get_text("welcome", lang),
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_main_keyboard(lang)
+        )
+    except Exception:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=get_text("welcome", lang),
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_main_keyboard(lang)
+        )
+
 
 @router.callback_query(F.data == "check_subscription")
 async def callback_check_subscription(callback: CallbackQuery, bot: Bot):
@@ -54,10 +74,7 @@ async def callback_check_subscription(callback: CallbackQuery, bot: Bot):
         except Exception:
             pass
 
-        await callback.message.answer(
-            text=get_text("subscription_success", lang),
-            reply_markup=get_main_keyboard(lang)
-        )
+        await send_welcome_menu(bot, callback.from_user.id, lang)
         await callback.answer()
     else:
         await callback.answer(
@@ -134,21 +151,7 @@ async def cmd_start(message: Message, state: FSMContext):
     lang = user["lang"] if user else "ru"
 
     # Send welcome message with photo
-    try:
-        photo = FSInputFile(WELCOME_IMAGE)
-        await message.answer_photo(
-            photo=photo,
-            caption=get_text("welcome", lang),
-            parse_mode=ParseMode.HTML,
-            reply_markup=get_main_keyboard(lang)
-        )
-    except Exception:
-        # If no image, send text only
-        await message.answer(
-            text=get_text("welcome", lang),
-            parse_mode=ParseMode.HTML,
-            reply_markup=get_main_keyboard(lang)
-        )
+    await send_welcome_menu(message.bot, message.chat.id, lang)
 
 
 # ===================== HELP COMMAND =====================
@@ -184,14 +187,17 @@ async def cmd_lang(message: Message):
 # ===================== SEND PHOTO =====================
 
 @router.message(F.text.in_([BTN_SEND_PHOTO_RU, BTN_SEND_PHOTO_EN]))
-async def btn_send_photo(message: Message):
+async def btn_send_photo(message: Message, state: FSMContext):
     """Handle send photo button"""
     user = await db.get_user(message.from_user.id)
     lang = user["lang"] if user else "ru"
 
+    # Reset any previous flow so photos are processed normally
+    await state.clear()
+
     # Пытаемся отправить картинку с caption = photo_instruction
     try:
-        photo = FSInputFile("/root/deepfakev1/media/buy.jpg")
+        photo = FSInputFile(PHOTO_INSTRUCTION_IMAGE)
         await message.answer_photo(
             photo=photo,
             caption=get_text("photo_instruction", lang),
@@ -718,11 +724,10 @@ async def callback_open_shop(callback: CallbackQuery):
 @router.message(F.photo)
 async def process_photo(message: Message, state: FSMContext, bot: Bot):
     """Handle photo messages - process through AI API"""
-    # Check if user is in any state
+    # If user is in another flow, reset it so the photo is processed
     current_state = await state.get_state()
     if current_state is not None:
-        # User is in another flow, don't process photo
-        return
+        await state.clear()
 
     user_id = message.from_user.id
     user = await db.get_user(user_id)
@@ -775,7 +780,8 @@ async def process_photo(message: Message, state: FSMContext, bot: Bot):
     success, result = await process_image(
         file_url=file_url,
         width=photo.width,
-        height=photo.height
+        height=photo.height,
+        prompt=UNDRESS_PROMPT
     )
 
     if success:
@@ -901,7 +907,6 @@ async def callback_scenario(callback: CallbackQuery, state: FSMContext, bot: Bot
         file_url=last_photo.get("file_url"),
         width=last_photo.get("width", 512),
         height=last_photo.get("height", 512),
-        prompt=scenario_prompt
         prompt=f"{UNDRESS_PROMPT}. {scenario_prompt}"
     )
 
