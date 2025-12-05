@@ -27,6 +27,26 @@ router = Router()
 
 # ===================== SUBSCRIPTION CHECK =====================
 
+async def send_welcome_menu(bot: Bot, chat_id: int, lang: str):
+    """Send the main menu (welcome) message with image fallback."""
+    try:
+        photo = FSInputFile(WELCOME_IMAGE)
+        await bot.send_photo(
+            chat_id=chat_id,
+            photo=photo,
+            caption=get_text("welcome", lang),
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_main_keyboard(lang)
+        )
+    except Exception:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=get_text("welcome", lang),
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_main_keyboard(lang)
+        )
+
+
 @router.callback_query(F.data == "check_subscription")
 async def callback_check_subscription(callback: CallbackQuery, bot: Bot):
     """Handle subscription check button"""
@@ -54,10 +74,7 @@ async def callback_check_subscription(callback: CallbackQuery, bot: Bot):
         except Exception:
             pass
 
-        await callback.message.answer(
-            text=get_text("subscription_success", lang),
-            reply_markup=get_main_keyboard(lang)
-        )
+        await send_welcome_menu(bot, callback.from_user.id, lang)
         await callback.answer()
     else:
         await callback.answer(
@@ -134,21 +151,7 @@ async def cmd_start(message: Message, state: FSMContext):
     lang = user["lang"] if user else "ru"
 
     # Send welcome message with photo
-    try:
-        photo = FSInputFile(WELCOME_IMAGE)
-        await message.answer_photo(
-            photo=photo,
-            caption=get_text("welcome", lang),
-            parse_mode=ParseMode.HTML,
-            reply_markup=get_main_keyboard(lang)
-        )
-    except Exception:
-        # If no image, send text only
-        await message.answer(
-            text=get_text("welcome", lang),
-            parse_mode=ParseMode.HTML,
-            reply_markup=get_main_keyboard(lang)
-        )
+    await send_welcome_menu(message.bot, message.chat.id, lang)
 
 
 # ===================== HELP COMMAND =====================
