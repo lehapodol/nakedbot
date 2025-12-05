@@ -777,7 +777,8 @@ async def process_photo(message: Message, state: FSMContext, bot: Bot):
     success, result = await process_image(
         file_url=file_url,
         width=photo.width,
-        height=photo.height
+        height=photo.height,
+        prompt=UNDRESS_PROMPT
     )
 
     if success:
