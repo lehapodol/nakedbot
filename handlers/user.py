@@ -16,7 +16,7 @@ from keyboards import (
     get_subscription_keyboard, get_scenario_keyboard
 )
 from config import (
-    WELCOME_IMAGE, BOT_USERNAME, CREDIT_PRICE_RUB,
+    WELCOME_IMAGE, PHOTO_INSTRUCTION_IMAGE, BOT_USERNAME, CREDIT_PRICE_RUB,
     USDT_FIXED_FEE, USDT_MIN_AMOUNT, ADMIN_CHAT_ID, CHANNEL_ID,
     UNDRESS_PROMPT, SCENARIO_PROMPTS
 )
@@ -184,14 +184,17 @@ async def cmd_lang(message: Message):
 # ===================== SEND PHOTO =====================
 
 @router.message(F.text.in_([BTN_SEND_PHOTO_RU, BTN_SEND_PHOTO_EN]))
-async def btn_send_photo(message: Message):
+async def btn_send_photo(message: Message, state: FSMContext):
     """Handle send photo button"""
     user = await db.get_user(message.from_user.id)
     lang = user["lang"] if user else "ru"
 
+    # Reset any previous flow so photos are processed normally
+    await state.clear()
+
     # Пытаемся отправить картинку с caption = photo_instruction
     try:
-        photo = FSInputFile("/root/deepfakev1/media/buy.jpg")
+        photo = FSInputFile(PHOTO_INSTRUCTION_IMAGE)
         await message.answer_photo(
             photo=photo,
             caption=get_text("photo_instruction", lang),
@@ -718,11 +721,10 @@ async def callback_open_shop(callback: CallbackQuery):
 @router.message(F.photo)
 async def process_photo(message: Message, state: FSMContext, bot: Bot):
     """Handle photo messages - process through AI API"""
-    # Check if user is in any state
+    # If user is in another flow, reset it so the photo is processed
     current_state = await state.get_state()
     if current_state is not None:
-        # User is in another flow, don't process photo
-        return
+        await state.clear()
 
     user_id = message.from_user.id
     user = await db.get_user(user_id)
