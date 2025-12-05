@@ -184,10 +184,13 @@ async def cmd_lang(message: Message):
 # ===================== SEND PHOTO =====================
 
 @router.message(F.text.in_([BTN_SEND_PHOTO_RU, BTN_SEND_PHOTO_EN]))
-async def btn_send_photo(message: Message):
+async def btn_send_photo(message: Message, state: FSMContext):
     """Handle send photo button"""
     user = await db.get_user(message.from_user.id)
     lang = user["lang"] if user else "ru"
+
+    # Reset any previous flow so photos are processed normally
+    await state.clear()
 
     # Пытаемся отправить картинку с caption = photo_instruction
     try:
