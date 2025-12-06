@@ -236,7 +236,7 @@ async def btn_profile(message: Message):
     lang = user["lang"]
     lang_display = "🇷🇺 ru" if lang == "ru" else "🇬🇧 en"
 
-    text = get_text("profile_title", lang) + "\n\n" + get_text(
+    text = get_text(
         "profile_text", lang,
         user_id=user_id,
         free_credits=user["free_credits"],
