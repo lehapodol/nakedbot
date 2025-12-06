@@ -4,7 +4,9 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from locales import get_text
-from config import SUPPORT_URL, DISCOUNTS, TERMS_URL, PRIVACY_URL, CHANNEL_URL
+from config import (
+    SUPPORT_URL, PARTNER_SUPPORT_URL, DISCOUNTS, TERMS_URL, PRIVACY_URL, CHANNEL_URL
+)
 
 
 def get_subscription_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
@@ -150,7 +152,7 @@ def get_referral_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(
             text=get_text("btn_partner_panel", lang),
-            url=SUPPORT_URL
+            url=PARTNER_SUPPORT_URL
         )
     )
     builder.row(

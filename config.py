@@ -21,6 +21,7 @@ ADMIN_IDS = [1876714755, 8576622389, 200558743]
 # ===================== SUPPORT CONFIGURATION =====================
 
 SUPPORT_URL = "https://t.me/nakedonly_support"
+PARTNER_SUPPORT_URL = "https://t.me/contactmanag"
 
 TERMS_URL = "https://telegra.ph/Polzovatelskoe-soglashenie-08-15-10"
 
