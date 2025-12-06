@@ -34,12 +34,29 @@ async def init_db():
                 amount_usdt REAL,
                 photo_count INTEGER,
                 invoice_id TEXT,
+                external_id TEXT,
+                currency TEXT,
+                provider TEXT DEFAULT 'platega',
                 status TEXT DEFAULT 'pending',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 paid_at TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(user_id)
             )
         """)
+
+        # Migration: add missing columns if table already exists
+        try:
+            await db.execute("ALTER TABLE payments ADD COLUMN external_id TEXT")
+        except aiosqlite.OperationalError:
+            pass
+        try:
+            await db.execute("ALTER TABLE payments ADD COLUMN currency TEXT")
+        except aiosqlite.OperationalError:
+            pass
+        try:
+            await db.execute("ALTER TABLE payments ADD COLUMN provider TEXT DEFAULT 'platega'")
+        except aiosqlite.OperationalError:
+            pass
         
         # UTM tags table
         await db.execute("""
@@ -290,15 +307,19 @@ async def create_payment(
     amount_rub: float,
     amount_usdt: float,
     photo_count: int,
-    invoice_id: str
+    invoice_id: str,
+    *,
+    external_id: str = None,
+    currency: str = None,
+    provider: str = "platega"
 ) -> int:
     """Create payment record"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
         cursor = await db.execute(
-            """INSERT INTO payments 
-               (user_id, amount_rub, amount_usdt, photo_count, invoice_id) 
-               VALUES (?, ?, ?, ?, ?)""",
-            (user_id, amount_rub, amount_usdt, photo_count, invoice_id)
+            """INSERT INTO payments
+               (user_id, amount_rub, amount_usdt, photo_count, invoice_id, external_id, currency, provider)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, amount_rub, amount_usdt, photo_count, invoice_id, external_id, currency, provider)
         )
         await db.commit()
         return cursor.lastrowid
@@ -345,13 +366,36 @@ async def get_payment_by_invoice(invoice_id: str) -> Optional[dict]:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             "SELECT * FROM payments WHERE invoice_id = ?",
-            (invoice_id,)
+            (invoice_id,),
         )
         row = await cursor.fetchone()
         return dict(row) if row else None
 
 
+async def get_payment_by_external_id(external_id: str) -> Optional[dict]:
+    """Get payment by external/order ID"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM payments WHERE external_id = ?",
+            (external_id,),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def update_payment_invoice(payment_id: int, invoice_id: str):
+    """Update invoice id for a payment"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "UPDATE payments SET invoice_id = ? WHERE id = ?",
+            (invoice_id, payment_id),
+        )
+        await db.commit()
+
+
 # ===================== UTM FUNCTIONS =====================
+
 
 async def create_utm(name: str) -> bool:
     """Create UTM tag"""
