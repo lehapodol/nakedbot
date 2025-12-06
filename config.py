@@ -101,7 +101,7 @@ API_BASE_URL = "https://api.streampay.org"
 STREAMPAY_STORE_ID = int(os.getenv("STREAMPAY_STORE_ID", "0"))
 STREAMPAY_PUBLIC_KEY_HEX = os.getenv("STREAMPAY_PUBLIC_KEY", "")
 STREAMPAY_PRIVATE_KEY_HEX = os.getenv("STREAMPAY_PRIVATE_KEY", "")
-STREAMPAY_WEBHOOK_PORT = int(os.getenv("STREAMPAY_WEBHOOK_PORT") or "8081")
+STREAMPAY_WEBHOOK_PORT = 8081
 
 # ===================== SCENARIO PROMPTS =====================
 
