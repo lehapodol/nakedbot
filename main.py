@@ -8,7 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
 from database import init_db
 from handlers import setup_routers
-from handlers.payment import check_payments
+from handlers.payment import check_payments, start_streampay_webhook
 from middlewares import SubscriptionMiddleware
 
 # Configure logging
@@ -46,7 +46,11 @@ async def main():
     # Start payment checker in background
     asyncio.create_task(check_payments(bot))
     logger.info("Platega payment checker started")
-    
+
+    # Start Streampay webhook server
+    await start_streampay_webhook(bot)
+    logger.info("Streampay webhook server started")
+
     # Start polling
     logger.info("Bot started")
     await dp.start_polling(bot)

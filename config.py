@@ -1,3 +1,5 @@
+import os
+
 # ===================== BOT CONFIGURATION =====================
 
 # Telegram Bot Token
@@ -92,6 +94,14 @@ UNDRESS_CHECK_URL = "https://api.undresswith.ai/undress_api/check_item"
 UNDRESS_PROMPT = "Nude"
 UNDRESS_AI_MODEL = 2
 UNDRESS_NUM_IMAGES = 1
+
+# ===================== STREAMPAY CONFIGURATION =====================
+
+API_BASE_URL = "https://api.streampay.org"
+STREAMPAY_STORE_ID = int(os.getenv("STREAMPAY_STORE_ID", "0"))
+STREAMPAY_PUBLIC_KEY_HEX = os.getenv("STREAMPAY_PUBLIC_KEY", "")
+STREAMPAY_PRIVATE_KEY_HEX = os.getenv("STREAMPAY_PRIVATE_KEY", "")
+STREAMPAY_WEBHOOK_PORT = int(os.getenv("STREAMPAY_WEBHOOK_PORT", "8081"))
 
 # ===================== SCENARIO PROMPTS =====================
 

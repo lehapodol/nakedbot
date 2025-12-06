@@ -1,5 +1,8 @@
 import asyncio
+import logging
+import time
 import aiohttp
+from aiohttp import web
 from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery
 from aiogram.enums import ParseMode
@@ -12,13 +15,75 @@ from config import (
     PLATEGA_URL, PLATEGA_MERCHANT_ID, PLATEGA_API_SECRET,
     PLATEGA_RETURN_URL, PLATEGA_CHECK_INTERVAL,
     PLATEGA_METHOD_SBP, PLATEGA_METHOD_INTERNATIONAL,
-    REFERRAL_COMMISSION
+    REFERRAL_COMMISSION,
+    USDT_RUB_RATE,
+    STREAMPAY_WEBHOOK_PORT,
+)
+from streampay import (
+    streampay_create_payment,
+    streampay_get_currencies,
+    validate_streampay_signature,
 )
 
 router = Router()
 
 # Store pending payments for background checking
 pending_payments = {}
+
+logger = logging.getLogger(__name__)
+
+async def _get_streampay_currency() -> str:
+    """Fetch Streampay currencies and pick suitable option for UA/KZ/AZN/UZS."""
+    preferred = ["UAH", "KZT", "AZN", "UZS", "USDT"]
+    try:
+        currencies = await streampay_get_currencies()
+        available = {
+            str(item.get("system_currency") or item.get("code") or "").upper()
+            for item in currencies
+        }
+        for code in preferred:
+            if code in available:
+                return code
+    except Exception as exc:
+        logger.warning("Failed to fetch Streampay currencies: %s", exc)
+    return "USDT"
+
+
+async def finalize_successful_payment(bot: Bot, payment: dict):
+    """Mark payment completed, credit user and handle referrals."""
+    if payment.get("status") != "pending":
+        return
+
+    payment_id = payment.get("id")
+    user_id = payment.get("user_id")
+    photo_count = payment.get("photo_count", 0)
+    amount_rub = payment.get("amount_rub", 0)
+
+    await db.complete_payment(payment_id)
+    await db.add_credits(user_id, photo_count, "premium")
+
+    user = await db.get_user(user_id)
+    lang = user["lang"] if user else "ru"
+
+    if user and user.get("referrer_id"):
+        commission = amount_rub * (REFERRAL_COMMISSION / 100)
+        await db.add_ref_balance(user["referrer_id"], commission)
+        await db.create_referral_earning(
+            referrer_id=user["referrer_id"],
+            referral_id=user_id,
+            payment_id=payment_id,
+            amount=commission
+        )
+
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text=get_text("payment_success", lang, count=photo_count),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        pass
+
 
 
 async def create_platega_invoice(
@@ -132,42 +197,13 @@ async def check_payments(bot: Bot):
                             user_id = data["user_id"]
                             photo_count = data["photo_count"]
                             amount_rub = data["amount_rub"]
-                            
+
                             # Get payment from DB
                             payment = await db.get_payment_by_invoice(transaction_id)
-                            
-                            if payment and payment["status"] == "pending":
-                                # Complete payment
-                                await db.complete_payment(payment["id"])
-                                
-                                # Add credits to user
-                                await db.add_credits(user_id, photo_count, "premium")
-                                
-                                # Get user for language
-                                user = await db.get_user(user_id)
-                                lang = user["lang"] if user else "ru"
-                                
-                                # Process referral commission
-                                if user and user["referrer_id"]:
-                                    commission = amount_rub * (REFERRAL_COMMISSION / 100)
-                                    await db.add_ref_balance(user["referrer_id"], commission)
-                                    await db.create_referral_earning(
-                                        referrer_id=user["referrer_id"],
-                                        referral_id=user_id,
-                                        payment_id=payment["id"],
-                                        amount=commission
-                                    )
-                                
-                                # Notify user
-                                try:
-                                    await bot.send_message(
-                                        chat_id=user_id,
-                                        text=get_text("payment_success", lang, count=photo_count),
-                                        parse_mode=ParseMode.HTML
-                                    )
-                                except Exception:
-                                    pass
-                            
+
+                            if payment:
+                                await finalize_successful_payment(bot, payment)
+
                             payments_to_remove.append(transaction_id)
                         
                         # Payment failed or expired
@@ -219,10 +255,10 @@ async def callback_pay_sbp(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "pay:international")
 async def callback_pay_international(callback: CallbackQuery, state: FSMContext):
     """Handle International payment selection"""
-    await process_payment(callback, state, PLATEGA_METHOD_INTERNATIONAL)
+    await process_payment(callback, state, PLATEGA_METHOD_INTERNATIONAL, provider="streampay")
 
 
-async def process_payment(callback: CallbackQuery, state: FSMContext, payment_method: int):
+async def process_payment(callback: CallbackQuery, state: FSMContext, payment_method: int, provider: str = "platega"):
     """Process payment creation for any method"""
     user_id = callback.from_user.id
     user = await db.get_user(user_id)
@@ -247,6 +283,16 @@ async def process_payment(callback: CallbackQuery, state: FSMContext, payment_me
     # Create description
     description = f"{photo_count} обработок для user_id:{user_id}"
     
+    if provider == "streampay":
+        await process_streampay_payment(
+            callback=callback,
+            lang=lang,
+            user_id=user_id,
+            photo_count=photo_count,
+            amount_rub=amount_rub
+        )
+        return
+
     # Create Platega invoice
     result = await create_platega_invoice(
         amount=amount_rub,
@@ -288,6 +334,130 @@ async def process_payment(callback: CallbackQuery, state: FSMContext, payment_me
         await callback.answer()
     else:
         await callback.answer("❌ Ошибка", show_alert=True)
+
+
+async def process_streampay_payment(
+    callback: CallbackQuery,
+    lang: str,
+    user_id: int,
+    photo_count: int,
+    amount_rub: float,
+):
+    """Create Streampay invoice for international payments."""
+    system_currency = await _get_streampay_currency()
+    amount_usdt = round(amount_rub / USDT_RUB_RATE, 2)
+    external_id = f"streampay-{user_id}-{int(time.time())}"
+    description = f"{photo_count} обработок для user_id:{user_id}"
+
+    try:
+        payment_id = await db.create_payment(
+            user_id=user_id,
+            amount_rub=amount_rub,
+            amount_usdt=amount_usdt,
+            photo_count=photo_count,
+            invoice_id="",
+            external_id=external_id,
+            currency=system_currency,
+            provider="streampay"
+        )
+
+        response = await streampay_create_payment(
+            external_id=external_id,
+            customer=str(user_id),
+            description=description,
+            system_currency=system_currency,
+            amount=amount_usdt
+        )
+
+        invoice_id = response.get("invoice_id")
+        pay_url = response.get("pay_url")
+
+        if invoice_id:
+            await db.update_payment_invoice(payment_id, str(invoice_id))
+
+        if not pay_url:
+            raise ValueError("Payment link not found in Streampay response")
+
+        await callback.message.edit_text(
+            text=get_text(
+                "invoice_created", lang,
+                amount=int(amount_rub),
+                count=photo_count
+            ),
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_invoice_keyboard(pay_url, lang)
+        )
+        await callback.answer()
+    except Exception as exc:
+        logger.error("Failed to create Streampay invoice: %s", exc)
+        await callback.answer("❌ Ошибка", show_alert=True)
+
+
+async def streampay_webhook_handler(request: web.Request, bot: Bot):
+    """Process Streampay webhook with signature verification."""
+    signature = request.headers.get("Signature")
+    if not signature:
+        return web.Response(status=400, text="missing signature")
+
+    try:
+        payload = {}
+        if request.can_read_body:
+            try:
+                payload = await request.json()
+            except Exception:
+                payload = {}
+
+        query_params = dict(request.query)
+        values = {k: str(v) for k, v in (query_params or payload).items() if v is not None}
+
+        if not values:
+            return web.Response(status=400, text="empty payload")
+
+        if not validate_streampay_signature(values, signature):
+            return web.Response(status=403, text="invalid signature")
+
+        status_value = str(
+            values.get("status")
+            or values.get("payment_status")
+            or values.get("state")
+            or ""
+        ).lower()
+
+        external_id = values.get("external_id") or values.get("externalId") or values.get("order_id") or values.get("order")
+        invoice_id = values.get("invoice") or values.get("invoice_id") or values.get("id") or values.get("payment_id")
+
+        payment = None
+        if external_id:
+            payment = await db.get_payment_by_external_id(external_id)
+
+        if not payment and invoice_id:
+            payment = await db.get_payment_by_invoice(invoice_id)
+
+        if not payment:
+            return web.Response(status=404, text="payment not found")
+
+        success_statuses = {"paid", "success", "completed", "confirmed"}
+        if status_value in success_statuses:
+            await finalize_successful_payment(bot, payment)
+
+        return web.Response(text="ok")
+    except Exception as exc:
+        logger.error("Error handling Streampay webhook: %s", exc)
+        return web.Response(status=500, text="error")
+
+
+async def start_streampay_webhook(bot: Bot):
+    """Start aiohttp server for Streampay webhooks."""
+    app = web.Application()
+    app.router.add_post("/streampay/webhook", lambda request: streampay_webhook_handler(request, bot))
+    app.router.add_get("/streampay/webhook", lambda request: streampay_webhook_handler(request, bot))
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", STREAMPAY_WEBHOOK_PORT)
+    await site.start()
+    logger.info("Streampay webhook server started on port %s", STREAMPAY_WEBHOOK_PORT)
+    return runner
 
 
 @router.callback_query(F.data == "back_to_shop")
