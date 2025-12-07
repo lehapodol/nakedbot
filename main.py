@@ -48,8 +48,11 @@ async def main():
     logger.info("Platega payment checker started")
 
     # Start Streampay webhook server
-    await start_streampay_webhook(bot)
-    logger.info("Streampay webhook server started")
+    streampay_runner = await start_streampay_webhook(bot)
+    if streampay_runner:
+        logger.info("Streampay webhook server started")
+    else:
+        logger.warning("Streampay webhook server is disabled (no credentials)")
 
     # Start polling
     logger.info("Bot started")
