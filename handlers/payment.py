@@ -129,6 +129,7 @@ async def create_platega_invoice(
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as response:
+                text = await response.text()
                 if response.status == 200:
                     data = await response.json()
                     return {
@@ -137,9 +138,15 @@ async def create_platega_invoice(
                         "redirect": data.get("redirect"),
                         "status": data.get("status")
                     }
-                else:
-                    return {"success": False, "error": f"API error {response.status}"}
+
+                logger.error(
+                    "Platega invoice creation failed: status=%s body=%s",
+                    response.status,
+                    text,
+                )
+                return {"success": False, "error": f"API error {response.status}"}
     except Exception as e:
+        logger.error("Platega invoice creation exception: %s", e)
         return {"success": False, "error": str(e)}
 
 
@@ -317,7 +324,7 @@ async def process_payment(callback: CallbackQuery, state: FSMContext, payment_me
         payment_method=payment_method,
         description=description
     )
-    
+
     if result.get("success"):
         transaction_id = result.get("transaction_id")
         redirect_url = result.get("redirect")
@@ -351,7 +358,13 @@ async def process_payment(callback: CallbackQuery, state: FSMContext, payment_me
         )
         await callback.answer()
     else:
-        await callback.answer("❌ Ошибка", show_alert=True)
+        logger.error(
+            "Failed to create Platega invoice: method=%s provider=%s error=%s",
+            payment_method,
+            provider,
+            result.get("error"),
+        )
+        await callback.answer(get_text("payment_unavailable", lang), show_alert=True)
 
 
 async def process_streampay_payment(
