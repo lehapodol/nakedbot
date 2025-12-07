@@ -256,7 +256,17 @@ async def callback_pay_sbp(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "pay:international")
 async def callback_pay_international(callback: CallbackQuery, state: FSMContext):
     """Handle International payment selection"""
-    await process_payment(callback, state, PLATEGA_METHOD_INTERNATIONAL, provider="streampay")
+    provider = "streampay" if streampay_is_configured() else "platega"
+
+    if provider == "platega":
+        logger.info("Streampay is not configured; using Platega for international payment")
+
+    await process_payment(
+        callback,
+        state,
+        PLATEGA_METHOD_INTERNATIONAL,
+        provider=provider,
+    )
 
 
 async def process_payment(callback: CallbackQuery, state: FSMContext, payment_method: int, provider: str = "platega"):
