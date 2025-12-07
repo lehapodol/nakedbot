@@ -22,6 +22,7 @@ from config import (
 from streampay import (
     streampay_create_payment,
     streampay_get_currencies,
+    streampay_is_configured,
     validate_streampay_signature,
 )
 
@@ -255,7 +256,17 @@ async def callback_pay_sbp(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "pay:international")
 async def callback_pay_international(callback: CallbackQuery, state: FSMContext):
     """Handle International payment selection"""
-    await process_payment(callback, state, PLATEGA_METHOD_INTERNATIONAL, provider="streampay")
+    provider = "streampay" if streampay_is_configured() else "platega"
+
+    if provider == "platega":
+        logger.info("Streampay is not configured; using Platega for international payment")
+
+    await process_payment(
+        callback,
+        state,
+        PLATEGA_METHOD_INTERNATIONAL,
+        provider=provider,
+    )
 
 
 async def process_payment(callback: CallbackQuery, state: FSMContext, payment_method: int, provider: str = "platega"):
@@ -283,6 +294,13 @@ async def process_payment(callback: CallbackQuery, state: FSMContext, payment_me
     # Create description
     description = f"{photo_count} обработок для user_id:{user_id}"
     
+    if provider == "streampay" and not streampay_is_configured():
+        logger.warning(
+            "Streampay is not configured; falling back to Platega international payment"
+        )
+        provider = "platega"
+        payment_method = PLATEGA_METHOD_INTERNATIONAL
+
     if provider == "streampay":
         await process_streampay_payment(
             callback=callback,
@@ -344,6 +362,11 @@ async def process_streampay_payment(
     amount_rub: float,
 ):
     """Create Streampay invoice for international payments."""
+    if not streampay_is_configured():
+        logger.warning("Streampay is not configured; blocking international payment")
+        await callback.answer(get_text("payment_unavailable", lang), show_alert=True)
+        return
+
     system_currency = await _get_streampay_currency()
     amount_usdt = round(amount_rub / USDT_RUB_RATE, 2)
     external_id = f"streampay-{user_id}-{int(time.time())}"
@@ -448,6 +471,10 @@ async def streampay_webhook_handler(request: web.Request, bot: Bot):
 
 async def start_streampay_webhook(bot: Bot):
     """Start aiohttp server for Streampay webhooks."""
+    if not streampay_is_configured():
+        logger.warning("Streampay credentials are missing; webhook server not started")
+        return None
+
     app = web.Application()
     app.router.add_post("/streampay/webhook", lambda request: streampay_webhook_handler(request, bot))
     app.router.add_get("/streampay/webhook", lambda request: streampay_webhook_handler(request, bot))

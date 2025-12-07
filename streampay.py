@@ -24,6 +24,11 @@ PUBLIC_KEY: Optional[VerifyKey] = (
 )
 
 
+def streampay_is_configured() -> bool:
+    """Return True when all Streampay credentials are provided."""
+    return bool(PRIVATE_KEY and PUBLIC_KEY and STREAMPAY_STORE_ID)
+
+
 async def streampay_get_currencies():
     async with httpx.AsyncClient(base_url=API_BASE_URL) as client:
         resp = await client.get("/api/payment/currencies")
