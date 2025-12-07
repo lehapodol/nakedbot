@@ -22,6 +22,7 @@ from config import (
 from streampay import (
     streampay_create_payment,
     streampay_get_currencies,
+    streampay_is_configured,
     validate_streampay_signature,
 )
 
@@ -344,6 +345,11 @@ async def process_streampay_payment(
     amount_rub: float,
 ):
     """Create Streampay invoice for international payments."""
+    if not streampay_is_configured():
+        logger.warning("Streampay is not configured; blocking international payment")
+        await callback.answer(get_text("payment_unavailable", lang), show_alert=True)
+        return
+
     system_currency = await _get_streampay_currency()
     amount_usdt = round(amount_rub / USDT_RUB_RATE, 2)
     external_id = f"streampay-{user_id}-{int(time.time())}"
@@ -448,6 +454,10 @@ async def streampay_webhook_handler(request: web.Request, bot: Bot):
 
 async def start_streampay_webhook(bot: Bot):
     """Start aiohttp server for Streampay webhooks."""
+    if not streampay_is_configured():
+        logger.warning("Streampay credentials are missing; webhook server not started")
+        return None
+
     app = web.Application()
     app.router.add_post("/streampay/webhook", lambda request: streampay_webhook_handler(request, bot))
     app.router.add_get("/streampay/webhook", lambda request: streampay_webhook_handler(request, bot))
