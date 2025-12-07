@@ -284,6 +284,13 @@ async def process_payment(callback: CallbackQuery, state: FSMContext, payment_me
     # Create description
     description = f"{photo_count} обработок для user_id:{user_id}"
     
+    if provider == "streampay" and not streampay_is_configured():
+        logger.warning(
+            "Streampay is not configured; falling back to Platega international payment"
+        )
+        provider = "platega"
+        payment_method = PLATEGA_METHOD_INTERNATIONAL
+
     if provider == "streampay":
         await process_streampay_payment(
             callback=callback,
